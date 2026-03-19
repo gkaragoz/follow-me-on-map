@@ -3,7 +3,8 @@
 .claude
 .dart_tool
 .idea
-build
+build/*/
+!build/web
 server/data
 server/.dart_tool
 *.iml
