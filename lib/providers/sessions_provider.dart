@@ -3,13 +3,16 @@ import 'package:flutter/foundation.dart';
 import '../models/tracking_session.dart';
 import '../models/location_point.dart';
 import '../services/storage_service.dart';
+import '../services/api_client.dart';
 import '../services/gpx_export_service.dart';
 
 class SessionsProvider extends ChangeNotifier {
   final StorageService _storageService;
+  final ApiClient _apiClient;
   final GpxExportService _gpxExportService;
 
   List<TrackingSession> _sessions = [];
+  bool _isLoading = false;
   TrackingSession? _viewingSession;
 
   // Playback state
@@ -20,11 +23,14 @@ class SessionsProvider extends ChangeNotifier {
 
   SessionsProvider({
     required StorageService storageService,
+    required ApiClient apiClient,
     required GpxExportService gpxExportService,
   })  : _storageService = storageService,
+        _apiClient = apiClient,
         _gpxExportService = gpxExportService;
 
   List<TrackingSession> get sessions => _sessions;
+  bool get isLoading => _isLoading;
   TrackingSession? get viewingSession => _viewingSession;
 
   // Playback getters
@@ -39,9 +45,17 @@ class SessionsProvider extends ChangeNotifier {
     return _viewingSession!.points[_playbackIndex];
   }
 
-  void loadSessions() {
-    _sessions = _storageService.getAllSessions();
+  Future<void> loadSessions() async {
+    _isLoading = true;
     notifyListeners();
+    try {
+      _sessions = await _storageService.getAllSessions();
+    } catch (e) {
+      debugPrint('Failed to load sessions: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> deleteSession(String id) async {
@@ -50,11 +64,21 @@ class SessionsProvider extends ChangeNotifier {
       _viewingSession = null;
       _resetPlayback();
     }
-    loadSessions();
+    await loadSessions();
   }
 
-  void viewSession(TrackingSession? session) {
-    _viewingSession = session;
+  Future<void> viewSession(TrackingSession? session) async {
+    if (session != null) {
+      // Fetch full session with points from API
+      try {
+        _viewingSession = await _apiClient.getSession(session.id);
+      } catch (e) {
+        debugPrint('Failed to fetch session details: $e');
+        _viewingSession = session;
+      }
+    } else {
+      _viewingSession = null;
+    }
     _resetPlayback();
     notifyListeners();
   }

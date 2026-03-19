@@ -44,6 +44,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Server data
+server/data/
+server/.dart_tool/
+
 # Platform specific
 /android/.gradle/
 /android/captures/

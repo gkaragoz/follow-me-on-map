@@ -4,13 +4,19 @@ import 'providers/tracking_provider.dart';
 import 'providers/sessions_provider.dart';
 import 'services/location_service.dart';
 import 'services/storage_service.dart';
+import 'services/api_client.dart';
 import 'services/gpx_export_service.dart';
 import 'screens/map_screen.dart';
 
 class App extends StatelessWidget {
+  final ApiClient apiClient;
   final StorageService storageService;
 
-  const App({super.key, required this.storageService});
+  const App({
+    super.key,
+    required this.apiClient,
+    required this.storageService,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,12 +25,13 @@ class App extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => TrackingProvider(
             locationService: LocationService(),
-            storageService: storageService,
+            apiClient: apiClient,
           ),
         ),
         ChangeNotifierProvider(
           create: (_) => SessionsProvider(
             storageService: storageService,
+            apiClient: apiClient,
             gpxExportService: GpxExportService(),
           ),
         ),

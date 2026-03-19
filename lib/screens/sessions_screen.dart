@@ -27,6 +27,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
       ),
       body: Consumer<SessionsProvider>(
         builder: (context, sessionsProvider, _) {
+          if (sessionsProvider.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           final sessions = sessionsProvider.sessions;
 
           if (sessions.isEmpty) {

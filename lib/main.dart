@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'config.dart';
+import 'services/api_client.dart';
 import 'services/storage_service.dart';
-import 'services/mock_data_service.dart';
 import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final storageService = StorageService();
-  await storageService.init();
+  final apiClient = ApiClient(baseUrl: AppConfig.baseUrl);
+  final storageService = StorageService(apiClient: apiClient);
 
-  // Seed mock sessions so the app has data to inspect on first launch
-  await MockDataService(storageService).seedIfEmpty();
-
-  runApp(App(storageService: storageService));
+  runApp(App(
+    apiClient: apiClient,
+    storageService: storageService,
+  ));
 }

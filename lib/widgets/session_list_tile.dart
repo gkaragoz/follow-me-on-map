@@ -57,7 +57,7 @@ class SessionListTile extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(_formatDistance(session.totalDistanceMeters)),
                 const SizedBox(width: 12),
-                Text('${session.points.length} pts'),
+                Text('${session.pointCount ?? session.points.length} pts'),
               ],
             ),
           ],

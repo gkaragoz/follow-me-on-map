@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:gpx/gpx.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -6,6 +7,10 @@ import '../models/tracking_session.dart';
 
 class GpxExportService {
   Future<String> exportSession(TrackingSession session) async {
+    if (kIsWeb) {
+      throw UnsupportedError('GPX export is not supported on web');
+    }
+
     final gpx = Gpx();
     gpx.creator = 'Follow Me On Map';
     gpx.metadata = Metadata(
@@ -43,6 +48,10 @@ class GpxExportService {
   }
 
   Future<void> shareSession(TrackingSession session) async {
+    if (kIsWeb) {
+      throw UnsupportedError('GPX sharing is not supported on web');
+    }
+
     final filePath = await exportSession(session);
     await Share.shareXFiles(
       [XFile(filePath)],
