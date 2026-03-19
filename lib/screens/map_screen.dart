@@ -5,7 +5,6 @@ import '../providers/sessions_provider.dart';
 import '../utils/map_tile_providers.dart';
 import '../widgets/map_view.dart';
 import '../widgets/map_layer_switcher.dart';
-import '../widgets/tracking_controls.dart';
 import '../widgets/playback_controls.dart';
 import 'sessions_screen.dart';
 
@@ -22,7 +21,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize location on startup
+    // Initialize location and auto-start tracking
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<TrackingProvider>().initLocation();
     });
@@ -31,6 +30,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     final sessionsProvider = context.watch<SessionsProvider>();
+    final tracking = context.watch<TrackingProvider>();
     final viewingSession = sessionsProvider.viewingSession;
 
     return Scaffold(
@@ -81,10 +81,62 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
 
+          // Live status bar (when not viewing a session)
+          if (viewingSession == null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              left: 12,
+              right: 12,
+              child: Card(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.circle,
+                        size: 10,
+                        color: tracking.isConnected
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        tracking.isConnected ? 'Live' : 'Offline',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: tracking.isConnected
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '${tracking.trackPoints.length} pts',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      if (tracking.peers.isNotEmpty) ...[
+                        const SizedBox(width: 12),
+                        Icon(Icons.people, size: 16, color: Colors.orange),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${tracking.peers.length}',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
           // Layer switcher (bottom-right)
           Positioned(
             right: 12,
-            bottom: 220,
+            bottom: viewingSession != null ? 220 : 80,
             child: MapLayerSwitcher(
               currentLayer: _currentLayer,
               onLayerChanged: (layer) {
@@ -96,21 +148,16 @@ class _MapScreenState extends State<MapScreen> {
           // Center on location button
           Positioned(
             right: 12,
-            bottom: 280,
+            bottom: viewingSession != null ? 280 : 140,
             child: FloatingActionButton.small(
               heroTag: 'center',
               onPressed: () {
-                final tracking = context.read<TrackingProvider>();
                 tracking.isFollowing = true;
               },
-              child: Consumer<TrackingProvider>(
-                builder: (context, tracking, _) {
-                  return Icon(
-                    tracking.isFollowing
-                        ? Icons.my_location
-                        : Icons.location_searching,
-                  );
-                },
+              child: Icon(
+                tracking.isFollowing
+                    ? Icons.my_location
+                    : Icons.location_searching,
               ),
             ),
           ),
@@ -118,7 +165,7 @@ class _MapScreenState extends State<MapScreen> {
           // Sessions button
           Positioned(
             left: 12,
-            bottom: 220,
+            bottom: viewingSession != null ? 220 : 80,
             child: FloatingActionButton.small(
               heroTag: 'sessions',
               onPressed: () {
@@ -133,15 +180,8 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
-          // Tracking controls or playback controls (bottom)
-          if (viewingSession == null)
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: TrackingControls(),
-            )
-          else
+          // Playback controls (only when viewing a session)
+          if (viewingSession != null)
             const Positioned(
               left: 0,
               right: 0,

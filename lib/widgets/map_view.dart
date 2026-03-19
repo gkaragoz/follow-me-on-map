@@ -152,32 +152,80 @@ class _MapViewState extends State<MapView> {
               ),
             ],
           ),
-        // Current location marker
-        if (tracking.currentLocation != null && viewingSession == null)
+        // Current location marker + peer markers
+        if (viewingSession == null)
           MarkerLayer(
             markers: [
-              Marker(
-                point: LatLng(
-                  tracking.currentLocation!.latitude,
-                  tracking.currentLocation!.longitude,
-                ),
-                width: 20,
-                height: 20,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blue.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      ),
-                    ],
+              // Own location
+              if (tracking.currentLocation != null)
+                Marker(
+                  point: LatLng(
+                    tracking.currentLocation!.latitude,
+                    tracking.currentLocation!.longitude,
+                  ),
+                  width: 20,
+                  height: 20,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              // Peer locations
+              ...tracking.peers.values.map((peer) => Marker(
+                    point: LatLng(
+                      peer.point.latitude,
+                      peer.point.longitude,
+                    ),
+                    width: 32,
+                    height: 40,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            peer.clientId.substring(0, 4),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.orange.withValues(alpha: 0.3),
+                                blurRadius: 6,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
             ],
           ),
         // Markers for viewed session (start flag, end flag, playback position)

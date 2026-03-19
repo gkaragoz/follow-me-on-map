@@ -9,15 +9,32 @@ import '../models/tracking_session.dart';
 import '../services/location_service.dart';
 import '../services/api_client.dart';
 
+/// Represents another connected client's live position.
+class PeerLocation {
+  final String clientId;
+  LocationPoint point;
+
+  PeerLocation({required this.clientId, required this.point});
+}
+
 class TrackingProvider extends ChangeNotifier {
   final LocationService _locationService;
   final ApiClient _apiClient;
 
+  // Own tracking state
   TrackingSession? _activeSession;
   StreamSubscription<LocationPoint>? _locationSubscription;
   LocationPoint? _currentLocation;
   int _tickRateMs = 1000;
   bool _isFollowing = true;
+  bool _isConnected = false;
+  late final String _clientId;
+
+  // Peer tracking
+  final Map<String, PeerLocation> _peers = {};
+
+  // Session rotation
+  static const _maxSessionDuration = Duration(hours: 1);
 
   WebSocketChannel? _wsChannel;
   StreamSubscription? _wsSubscription;
@@ -26,54 +43,49 @@ class TrackingProvider extends ChangeNotifier {
     required LocationService locationService,
     required ApiClient apiClient,
   })  : _locationService = locationService,
-        _apiClient = apiClient;
+        _apiClient = apiClient,
+        _clientId = const Uuid().v4().substring(0, 8);
 
   TrackingSession? get activeSession => _activeSession;
   LocationPoint? get currentLocation => _currentLocation;
   int get tickRateMs => _tickRateMs;
   bool get isTracking => _activeSession != null;
   bool get isFollowing => _isFollowing;
+  bool get isConnected => _isConnected;
+  String get clientId => _clientId;
   List<LocationPoint> get trackPoints => _activeSession?.points ?? [];
+  Map<String, PeerLocation> get peers => Map.unmodifiable(_peers);
 
   set isFollowing(bool value) {
     _isFollowing = value;
     notifyListeners();
   }
 
-  void setTickRate(int ms) {
-    _tickRateMs = ms;
-    if (isTracking) {
-      _locationService.stopTracking();
-      _locationSubscription?.cancel();
-      _startListening();
-    }
-    notifyListeners();
-  }
-
+  /// Initialize location and auto-start tracking.
   Future<bool> initLocation() async {
     final hasPermission = await _locationService.checkAndRequestPermission();
     if (hasPermission) {
       _currentLocation = await _locationService.getCurrentPosition();
       notifyListeners();
+      // Auto-start tracking
+      _connectAndTrack();
     }
     return hasPermission;
   }
 
-  Future<void> startSession() async {
-    final hasPermission = await _locationService.checkAndRequestPermission();
-    if (!hasPermission) return;
+  /// Connect to server and start streaming location automatically.
+  Future<void> _connectAndTrack() async {
+    _connectWebSocket();
 
     final now = DateTime.now();
     _activeSession = TrackingSession(
-      id: const Uuid().v4(),
+      id: '$_clientId-${now.millisecondsSinceEpoch.toRadixString(16)}',
       name:
-          'Session ${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+          'Auto ${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
       startTime: now,
       tickRateMs: _tickRateMs,
     );
 
-    // Connect WebSocket and notify server
-    _connectWebSocket();
     _sendWsMessage({
       'type': 'start_session',
       'session': _activeSession!.toJson(),
@@ -88,18 +100,49 @@ class TrackingProvider extends ChangeNotifier {
     _locationSubscription = _locationService.locationStream.listen((point) {
       _currentLocation = point;
       if (_activeSession != null) {
+        // Check for 1-hour rotation
+        if (point.timestamp.difference(_activeSession!.startTime) >=
+            _maxSessionDuration) {
+          _rotateSession(point.timestamp);
+        }
+
         _activeSession!.points.add(point);
         _updateDistance();
 
-        // Stream point to server via WebSocket
         _sendWsMessage({
           'type': 'location',
-          'sessionId': _activeSession!.id,
           'point': point.toJson(),
         });
       }
       notifyListeners();
     });
+  }
+
+  void _rotateSession(DateTime now) {
+    // Close current session
+    _activeSession!.endTime = now;
+    _sendWsMessage({
+      'type': 'stop_session',
+      'sessionId': _activeSession!.id,
+      'endTime': now.toIso8601String(),
+      'totalDistanceMeters': _activeSession!.totalDistanceMeters,
+    });
+
+    // Start new session
+    _activeSession = TrackingSession(
+      id: '$_clientId-${now.millisecondsSinceEpoch.toRadixString(16)}',
+      name:
+          'Auto ${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+      startTime: now,
+      tickRateMs: _tickRateMs,
+    );
+
+    _sendWsMessage({
+      'type': 'start_session',
+      'session': _activeSession!.toJson(),
+    });
+
+    debugPrint('[Tracking] Session rotated at $now');
   }
 
   void _updateDistance() {
@@ -132,62 +175,82 @@ class TrackingProvider extends ChangeNotifier {
 
   double _toRadians(double degrees) => degrees * pi / 180;
 
-  Future<void> stopSession() async {
-    if (_activeSession == null) return;
-
-    _locationService.stopTracking();
-    _locationSubscription?.cancel();
-    _locationSubscription = null;
-
-    _activeSession!.endTime = DateTime.now();
-
-    // Notify server via WebSocket
-    _sendWsMessage({
-      'type': 'stop_session',
-      'sessionId': _activeSession!.id,
-      'endTime': _activeSession!.endTime!.toIso8601String(),
-      'totalDistanceMeters': _activeSession!.totalDistanceMeters,
-    });
-
-    // Also save via REST as a complete update
-    try {
-      await _apiClient.updateSession(_activeSession!.id, {
-        'endTime': _activeSession!.endTime!.toIso8601String(),
-        'totalDistanceMeters': _activeSession!.totalDistanceMeters,
-      });
-    } catch (e) {
-      debugPrint('Failed to update session via REST: $e');
-    }
-
-    _disconnectWebSocket();
-    _activeSession = null;
-    notifyListeners();
-  }
-
   // ── WebSocket ────────────────────────────────────────────────────────
 
   void _connectWebSocket() {
     try {
       _wsChannel = _apiClient.connectTracking();
+      _isConnected = true;
+
+      // Register this client
+      _sendWsMessage({
+        'type': 'register',
+        'clientId': _clientId,
+      });
+
       _wsSubscription = _wsChannel!.stream.listen(
         (message) {
-          // Handle incoming broadcasts (e.g., from other clients)
           try {
-            final data = jsonDecode(message as String) as Map<String, dynamic>;
-            debugPrint('[WS] Received: ${data['type']}');
+            final data =
+                jsonDecode(message as String) as Map<String, dynamic>;
+            _handleWsMessage(data);
           } catch (e) {
             debugPrint('[WS] Error parsing message: $e');
           }
         },
         onError: (error) {
           debugPrint('[WS] Error: $error');
+          _isConnected = false;
+          notifyListeners();
         },
         onDone: () {
           debugPrint('[WS] Connection closed');
+          _isConnected = false;
+          notifyListeners();
         },
       );
+      notifyListeners();
     } catch (e) {
       debugPrint('[WS] Failed to connect: $e');
+      _isConnected = false;
+    }
+  }
+
+  void _handleWsMessage(Map<String, dynamic> data) {
+    final type = data['type'] as String?;
+
+    switch (type) {
+      case 'location_update':
+        final peerId = data['clientId'] as String;
+        final pointJson = data['point'] as Map<String, dynamic>;
+        final point = LocationPoint.fromJson(pointJson);
+        _peers[peerId] = PeerLocation(clientId: peerId, point: point);
+        notifyListeners();
+
+      case 'peers_snapshot':
+        final peersJson = data['peers'] as List<dynamic>;
+        for (final peer in peersJson) {
+          final peerMap = peer as Map<String, dynamic>;
+          final peerId = peerMap['clientId'] as String;
+          final point =
+              LocationPoint.fromJson(peerMap['point'] as Map<String, dynamic>);
+          _peers[peerId] = PeerLocation(clientId: peerId, point: point);
+        }
+        notifyListeners();
+
+      case 'client_connected':
+        debugPrint('[WS] Peer connected: ${data['clientId']}');
+
+      case 'client_disconnected':
+        final peerId = data['clientId'] as String;
+        _peers.remove(peerId);
+        notifyListeners();
+
+      case 'session_rotated':
+        debugPrint('[WS] Peer session rotated: ${data['clientId']}');
+
+      default:
+        debugPrint('[WS] Received: $type');
     }
   }
 
@@ -204,6 +267,7 @@ class TrackingProvider extends ChangeNotifier {
     _wsSubscription = null;
     _wsChannel?.sink.close();
     _wsChannel = null;
+    _isConnected = false;
   }
 
   @override
