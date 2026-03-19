@@ -172,5 +172,5 @@ class Database {
     );
   }
 
-  void close() => _db.dispose();
+  void close() => _db.close();
 }

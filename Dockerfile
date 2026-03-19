@@ -9,24 +9,23 @@ COPY web/ web/
 COPY analysis_options.yaml ./
 RUN flutter build web --release
 
-# Stage 2: Production — Dart runtime with sqlite3
+# Stage 2: Server with bundled sqlite3 (no system lib needed)
 FROM dart:stable
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-0 \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy server source and resolve deps
+# Copy server source and resolve deps (sqlite3 v3 bundles its own native lib)
 COPY shared/ shared/
 COPY server/ server/
 WORKDIR /app/server
 RUN dart pub get
 
+# Pre-run build hooks so they don't run on first startup
+RUN dart run --no-serve-devtools bin/server.dart --help 2>/dev/null; exit 0
+
 # Copy Flutter web build
 COPY --from=flutter-build /app/build/web /app/public
 
-# Create data directory for SQLite
 RUN mkdir -p /app/data
 
 WORKDIR /app/server
