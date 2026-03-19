@@ -100,15 +100,18 @@ class _MapViewState extends State<MapView> {
     // Determine which points to show on the map
     final List<LatLng> polylinePoints;
     if (viewingSession != null) {
-      final playbackIndex = sessionsProvider.playbackIndex;
-      polylinePoints = viewingSession.points
-          .take(playbackIndex + 1)
-          .map((p) => LatLng(p.latitude, p.longitude))
-          .toList();
+      final points = viewingSession.points;
+      final end = (sessionsProvider.playbackIndex + 1).clamp(0, points.length);
+      polylinePoints = List<LatLng>.generate(
+        end,
+        (i) => LatLng(points[i].latitude, points[i].longitude),
+      );
     } else {
-      polylinePoints = tracking.trackPoints
-          .map((p) => LatLng(p.latitude, p.longitude))
-          .toList();
+      final points = List.of(tracking.trackPoints);
+      polylinePoints = List<LatLng>.generate(
+        points.length,
+        (i) => LatLng(points[i].latitude, points[i].longitude),
+      );
     }
 
     // Default center (will be overridden when location is available)

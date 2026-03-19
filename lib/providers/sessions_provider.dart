@@ -101,7 +101,8 @@ class SessionsProvider extends ChangeNotifier {
   }
 
   void seekTo(int index) {
-    _playbackIndex = index.clamp(0, (totalPoints - 1).clamp(0, totalPoints));
+    if (totalPoints == 0) return;
+    _playbackIndex = index.clamp(0, totalPoints - 1);
     notifyListeners();
   }
 
