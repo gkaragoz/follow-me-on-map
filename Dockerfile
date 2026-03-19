@@ -1,5 +1,5 @@
 # Stage 1: Build Flutter web client
-FROM ghcr.io/cirruslabs/flutter:3.27.4 AS flutter-build
+FROM ghcr.io/cirruslabs/flutter:stable AS flutter-build
 WORKDIR /app
 COPY pubspec.yaml pubspec.lock* ./
 COPY shared/ shared/
@@ -10,7 +10,7 @@ COPY analysis_options.yaml ./
 RUN flutter build web --release
 
 # Stage 2: Build Dart server
-FROM dart:3.6 AS server-build
+FROM dart:stable AS server-build
 WORKDIR /app
 COPY shared/ shared/
 COPY server/ server/
