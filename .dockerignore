@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+.dart_tool
+.idea
+build
+server/data
+server/.dart_tool
+*.iml
+.DS_Store
+android
+ios
+macos
+linux
+windows
+test

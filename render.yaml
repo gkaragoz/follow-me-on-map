@@ -1,0 +1,9 @@
+services:
+  - type: web
+    runtime: docker
+    name: follow-me-on-map
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 8080
