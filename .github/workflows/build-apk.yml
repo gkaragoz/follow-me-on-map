@@ -1,0 +1,64 @@
+name: Build APK and Create Release
+
+on:
+  push:
+    branches:
+      - claude/flutter-gps-tracking-app-6WwIQ
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "Follow Me On Map v1.0.0"
+          body: |
+            ## Follow Me On Map - GPS Tracking App
+
+            First release of the Flutter GPS tracking app.
+
+            ### Features
+            - OpenStreetMap with Normal, Satellite, and Hybrid modes
+            - Real-time GPS tracking with configurable update rate (500ms - 10s)
+            - Path drawing on map showing your route
+            - Session management (start/stop, auto-save)
+            - View saved sessions on map with start/end markers
+            - GPX export and sharing
+            - Distance, duration, and point tracking
+
+            ### Installation
+            1. Download `app-release.apk` below
+            2. Enable "Install from unknown sources" on your Android device
+            3. Install the APK
+          files: build/app/outputs/flutter-apk/app-release.apk
+          draft: false
+          prerelease: false
+          make_latest: true
