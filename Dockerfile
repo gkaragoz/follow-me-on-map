@@ -9,8 +9,11 @@ COPY web/ web/
 COPY analysis_options.yaml ./
 RUN flutter build web --release
 
-# Stage 2: Build Dart server
+# Stage 2: Build and run Dart server
 FROM dart:stable AS server-build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY shared/ shared/
 COPY server/ server/
@@ -35,6 +38,9 @@ COPY --from=flutter-build /app/build/web /app/public
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data
+
+# Verify sqlite3 is findable
+RUN ldconfig && ldconfig -p | grep sqlite3
 
 EXPOSE 8080
 
