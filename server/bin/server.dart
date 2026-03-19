@@ -9,26 +9,21 @@ void main(List<String> args) async {
   final parser = ArgParser()
     ..addOption('port', abbr: 'p',
         defaultsTo: Platform.environment['PORT'] ?? '8080')
-    ..addOption('db', defaultsTo: 'data/tracking.db')
+    ..addOption('mongo',
+        defaultsTo: Platform.environment['MONGODB_URI'] ??
+            'mongodb://localhost:27017/follow_me_on_map')
     ..addOption('static', defaultsTo: 'public');
 
   final results = parser.parse(args);
   final port = int.parse(results['port'] as String);
-  final dbPath = results['db'] as String;
+  final mongoUri = results['mongo'] as String;
   final staticPath = results['static'] as String;
 
-  // Ensure data directory exists
-  final dbDir = Directory(dbPath).parent;
-  if (!dbDir.existsSync()) {
-    dbDir.createSync(recursive: true);
-  }
-
-  final db = Database(dbPath);
-  db.init();
-  print('Database initialized at $dbPath');
+  final db = Database(mongoUri);
+  await db.init();
 
   // Seed mock data on first run
-  MockDataService(db).seedIfEmpty();
+  await MockDataService(db).seedIfEmpty();
 
   final handler = buildHandler(
     db: db,
@@ -41,9 +36,9 @@ void main(List<String> args) async {
   print('WebSocket: ws://localhost:$port/ws/tracking');
 
   // Handle shutdown
-  ProcessSignal.sigint.watch().listen((_) {
+  ProcessSignal.sigint.watch().listen((_) async {
     print('\nShutting down...');
-    db.close();
+    await db.close();
     server.close();
     exit(0);
   });

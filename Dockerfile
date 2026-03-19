@@ -11,8 +11,6 @@ RUN dart pub get
 # Copy pre-built Flutter web client (built by CI or locally)
 COPY build/web/ /app/public/
 
-RUN mkdir -p /app/data
-
 EXPOSE 8080
 
-CMD ["dart", "run", "bin/server.dart", "--static", "/app/public", "--db", "/app/data/tracking.db"]
+CMD ["dart", "run", "bin/server.dart", "--static", "/app/public"]

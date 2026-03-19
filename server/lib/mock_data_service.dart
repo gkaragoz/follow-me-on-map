@@ -7,8 +7,8 @@ class MockDataService {
 
   MockDataService(this._db);
 
-  void seedIfEmpty() {
-    final existing = _db.getAllSessions();
+  Future<void> seedIfEmpty() async {
+    final existing = await _db.getAllSessions();
     if (existing.isNotEmpty) return;
 
     final sessions = [
@@ -20,7 +20,7 @@ class MockDataService {
     ];
 
     for (final session in sessions) {
-      _db.createSession(session);
+      await _db.createSession(session);
     }
     print('Seeded ${sessions.length} mock sessions');
   }

@@ -45,12 +45,11 @@ class TrackingWebSocket {
     );
   }
 
-  void _handleDisconnect(WebSocketChannel channel) {
+  Future<void> _handleDisconnect(WebSocketChannel channel) async {
     final client = _clients[channel];
     if (client != null) {
-      // Close active session
       if (client.activeSessionId != null) {
-        db.updateSession(client.activeSessionId!, {
+        await db.updateSession(client.activeSessionId!, {
           'endTime': DateTime.now().toIso8601String(),
         });
         _broadcast(channel, {
@@ -59,7 +58,6 @@ class TrackingWebSocket {
           'clientId': client.clientId,
         });
       }
-      // Notify others that this client left
       _broadcast(channel, {
         'type': 'client_disconnected',
         'clientId': client.clientId,
@@ -69,8 +67,8 @@ class TrackingWebSocket {
     print('[WS] Client disconnected (${_clients.length} remaining)');
   }
 
-  void _handleMessage(
-      WebSocketChannel channel, Map<String, dynamic> data) {
+  Future<void> _handleMessage(
+      WebSocketChannel channel, Map<String, dynamic> data) async {
     final type = data['type'] as String?;
 
     switch (type) {
@@ -80,7 +78,6 @@ class TrackingWebSocket {
           channel: channel,
           clientId: clientId,
         );
-        // Send current peers' locations to the new client
         final peers = <Map<String, dynamic>>[];
         for (final entry in _clients.entries) {
           final peer = entry.value;
@@ -95,7 +92,6 @@ class TrackingWebSocket {
           'type': 'peers_snapshot',
           'peers': peers,
         }));
-        // Notify others
         _broadcast(channel, {
           'type': 'client_connected',
           'clientId': clientId,
@@ -110,15 +106,12 @@ class TrackingWebSocket {
         final point = LocationPoint.fromJson(pointJson);
         client.lastLocation = point;
 
-        // Auto-create session if needed, or rotate if 1 hour exceeded
-        _ensureSession(client, point.timestamp);
+        await _ensureSession(client, point.timestamp);
 
-        // Save point to session
         if (client.activeSessionId != null) {
-          db.addPoint(client.activeSessionId!, point);
+          await db.addPoint(client.activeSessionId!, point);
         }
 
-        // Broadcast to other clients
         _broadcast(channel, {
           'type': 'location_update',
           'clientId': client.clientId,
@@ -128,7 +121,7 @@ class TrackingWebSocket {
       case 'start_session':
         final sessionJson = data['session'] as Map<String, dynamic>;
         final session = TrackingSession.fromJson(sessionJson);
-        db.createSession(session);
+        await db.createSession(session);
         final client = _clients[channel];
         if (client != null) {
           client.activeSessionId = session.id;
@@ -145,7 +138,7 @@ class TrackingWebSocket {
         final sessionId = data['sessionId'] as String;
         final endTime = data['endTime'] as String?;
         final totalDistance = data['totalDistanceMeters'] as num?;
-        db.updateSession(sessionId, {
+        await db.updateSession(sessionId, {
           'endTime': endTime ?? DateTime.now().toIso8601String(),
           if (totalDistance != null)
             'totalDistanceMeters': totalDistance.toDouble(),
@@ -167,12 +160,12 @@ class TrackingWebSocket {
     }
   }
 
-  void _ensureSession(_ConnectedClient client, DateTime pointTime) {
-    // Check if current session has exceeded 1 hour
+  Future<void> _ensureSession(
+      _ConnectedClient client, DateTime pointTime) async {
     if (client.activeSessionId != null && client.sessionStartTime != null) {
-      if (pointTime.difference(client.sessionStartTime!) >= _maxSessionDuration) {
-        // Close current session
-        db.updateSession(client.activeSessionId!, {
+      if (pointTime.difference(client.sessionStartTime!) >=
+          _maxSessionDuration) {
+        await db.updateSession(client.activeSessionId!, {
           'endTime': pointTime.toIso8601String(),
         });
         _broadcast(client.channel, {
@@ -180,13 +173,13 @@ class TrackingWebSocket {
           'oldSessionId': client.activeSessionId,
           'clientId': client.clientId,
         });
-        print('[WS] Session rotated for ${client.clientId}: ${client.activeSessionId}');
+        print(
+            '[WS] Session rotated for ${client.clientId}: ${client.activeSessionId}');
         client.activeSessionId = null;
         client.sessionStartTime = null;
       }
     }
 
-    // Create new session if none active
     if (client.activeSessionId == null) {
       final now = pointTime;
       final sessionId =
@@ -198,7 +191,7 @@ class TrackingWebSocket {
         startTime: now,
         tickRateMs: 1000,
       );
-      db.createSession(session);
+      await db.createSession(session);
       client.activeSessionId = sessionId;
       client.sessionStartTime = now;
       _broadcast(client.channel, {

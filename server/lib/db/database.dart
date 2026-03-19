@@ -1,176 +1,130 @@
-import 'package:sqlite3/sqlite3.dart' as sql;
+import 'package:mongo_dart/mongo_dart.dart';
 import 'package:shared/shared.dart';
 
 class Database {
-  final sql.Database _db;
+  final String _connectionString;
+  late Db _db;
+  late DbCollection _sessions;
 
-  Database(String path) : _db = sql.sqlite3.open(path);
+  Database(this._connectionString);
 
-  void init() {
-    _db.execute('PRAGMA foreign_keys = ON');
-    _db.execute('''
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT,
-        tick_rate_ms INTEGER NOT NULL DEFAULT 1000,
-        total_distance_meters REAL NOT NULL DEFAULT 0.0
-      )
-    ''');
-    _db.execute('''
-      CREATE TABLE IF NOT EXISTS location_points (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        latitude REAL NOT NULL,
-        longitude REAL NOT NULL,
-        altitude REAL NOT NULL,
-        speed REAL NOT NULL,
-        accuracy REAL NOT NULL,
-        timestamp TEXT NOT NULL,
-        sort_order INTEGER NOT NULL
-      )
-    ''');
-    _db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_points_session
-      ON location_points(session_id, sort_order)
-    ''');
+  Future<void> init() async {
+    _db = await Db.create(_connectionString);
+    await _db.open();
+    _sessions = _db.collection('sessions');
+    await _sessions.createIndex(keys: {'startTime': -1});
+    print('Connected to MongoDB');
   }
 
-  List<(TrackingSession, int)> getAllSessions() {
-    final result = _db.select('''
-      SELECT s.*, COUNT(lp.id) as point_count
-      FROM sessions s
-      LEFT JOIN location_points lp ON lp.session_id = s.id
-      GROUP BY s.id
-      ORDER BY s.start_time DESC
-    ''');
-    return result.map((row) {
-      final session = _rowToSession(row);
-      final pointCount = row['point_count'] as int;
+  Future<List<(TrackingSession, int)>> getAllSessions() async {
+    final docs = await _sessions.find(
+      where.sortBy('startTime', descending: true),
+    ).toList();
+    return docs.map((doc) {
+      final session = _docToSession(doc, includePoints: false);
+      final pointCount = (doc['points'] as List?)?.length ?? 0;
       return (session, pointCount);
     }).toList();
   }
 
-  TrackingSession? getSession(String id) {
-    final result = _db.select(
-      'SELECT * FROM sessions WHERE id = ?',
-      [id],
-    );
-    if (result.isEmpty) return null;
+  Future<TrackingSession?> getSession(String id) async {
+    final doc = await _sessions.findOne(where.eq('_id', id));
+    if (doc == null) return null;
+    return _docToSession(doc, includePoints: true);
+  }
 
-    final session = _rowToSession(result.first);
-    final points = _db.select(
-      'SELECT * FROM location_points WHERE session_id = ? ORDER BY sort_order',
-      [id],
-    );
-    for (final row in points) {
-      session.points.add(_rowToPoint(row));
-    }
+  Future<TrackingSession> createSession(TrackingSession session) async {
+    await _sessions.insertOne({
+      '_id': session.id,
+      'name': session.name,
+      'startTime': session.startTime.toIso8601String(),
+      'endTime': session.endTime?.toIso8601String(),
+      'tickRateMs': session.tickRateMs,
+      'totalDistanceMeters': session.totalDistanceMeters,
+      'points': session.points.map(_pointToDoc).toList(),
+    });
     return session;
   }
 
-  TrackingSession createSession(TrackingSession session) {
-    _db.execute(
-      '''INSERT INTO sessions (id, name, start_time, end_time, tick_rate_ms, total_distance_meters)
-         VALUES (?, ?, ?, ?, ?, ?)''',
-      [
-        session.id,
-        session.name,
-        session.startTime.toIso8601String(),
-        session.endTime?.toIso8601String(),
-        session.tickRateMs,
-        session.totalDistanceMeters,
-      ],
-    );
-
-    for (var i = 0; i < session.points.length; i++) {
-      _insertPoint(session.id, session.points[i], i);
-    }
-
-    return session;
-  }
-
-  void updateSession(String id, Map<String, dynamic> updates) {
-    final sets = <String>[];
-    final values = <Object?>[];
-
+  Future<void> updateSession(String id, Map<String, dynamic> updates) async {
+    final setFields = <String, dynamic>{};
     if (updates.containsKey('name')) {
-      sets.add('name = ?');
-      values.add(updates['name']);
+      setFields['name'] = updates['name'];
     }
     if (updates.containsKey('endTime')) {
-      sets.add('end_time = ?');
-      values.add(updates['endTime']);
+      setFields['endTime'] = updates['endTime'];
     }
     if (updates.containsKey('totalDistanceMeters')) {
-      sets.add('total_distance_meters = ?');
-      values.add(updates['totalDistanceMeters']);
+      setFields['totalDistanceMeters'] = updates['totalDistanceMeters'];
     }
-
-    if (sets.isEmpty) return;
-    values.add(id);
-    _db.execute(
-      'UPDATE sessions SET ${sets.join(', ')} WHERE id = ?',
-      values,
+    if (setFields.isEmpty) return;
+    await _sessions.updateOne(
+      where.eq('_id', id),
+      {r'$set': setFields},
     );
   }
 
-  void deleteSession(String id) {
-    _db.execute('DELETE FROM sessions WHERE id = ?', [id]);
+  Future<void> deleteSession(String id) async {
+    await _sessions.deleteOne(where.eq('_id', id));
   }
 
-  int addPoint(String sessionId, LocationPoint point) {
-    final countResult = _db.select(
-      'SELECT COUNT(*) as cnt FROM location_points WHERE session_id = ?',
-      [sessionId],
+  Future<int> addPoint(String sessionId, LocationPoint point) async {
+    await _sessions.updateOne(
+      where.eq('_id', sessionId),
+      {
+        r'$push': {'points': _pointToDoc(point)},
+      },
     );
-    final sortOrder = countResult.first['cnt'] as int;
-    _insertPoint(sessionId, point, sortOrder);
-    return sortOrder;
+    return 0;
   }
 
-  void _insertPoint(String sessionId, LocationPoint point, int sortOrder) {
-    _db.execute(
-      '''INSERT INTO location_points
-         (session_id, latitude, longitude, altitude, speed, accuracy, timestamp, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-      [
-        sessionId,
-        point.latitude,
-        point.longitude,
-        point.altitude,
-        point.speed,
-        point.accuracy,
-        point.timestamp.toIso8601String(),
-        sortOrder,
-      ],
-    );
+  Future<void> close() async {
+    await _db.close();
   }
 
-  TrackingSession _rowToSession(sql.Row row) {
+  // ── Helpers ──────────────────────────────────────────────────────────
+
+  TrackingSession _docToSession(Map<String, dynamic> doc,
+      {required bool includePoints}) {
+    final points = <LocationPoint>[];
+    if (includePoints && doc['points'] != null) {
+      for (final p in doc['points'] as List) {
+        points.add(_docToPoint(p as Map<String, dynamic>));
+      }
+    }
     return TrackingSession(
-      id: row['id'] as String,
-      name: row['name'] as String,
-      startTime: DateTime.parse(row['start_time'] as String),
-      endTime: row['end_time'] != null
-          ? DateTime.parse(row['end_time'] as String)
+      id: doc['_id'] as String,
+      name: doc['name'] as String,
+      startTime: DateTime.parse(doc['startTime'] as String),
+      endTime: doc['endTime'] != null
+          ? DateTime.parse(doc['endTime'] as String)
           : null,
-      tickRateMs: row['tick_rate_ms'] as int,
-      totalDistanceMeters: (row['total_distance_meters'] as num).toDouble(),
+      tickRateMs: doc['tickRateMs'] as int? ?? 1000,
+      totalDistanceMeters:
+          (doc['totalDistanceMeters'] as num?)?.toDouble() ?? 0.0,
+      points: points,
     );
   }
 
-  LocationPoint _rowToPoint(sql.Row row) {
+  LocationPoint _docToPoint(Map<String, dynamic> doc) {
     return LocationPoint(
-      latitude: (row['latitude'] as num).toDouble(),
-      longitude: (row['longitude'] as num).toDouble(),
-      altitude: (row['altitude'] as num).toDouble(),
-      speed: (row['speed'] as num).toDouble(),
-      accuracy: (row['accuracy'] as num).toDouble(),
-      timestamp: DateTime.parse(row['timestamp'] as String),
+      latitude: (doc['latitude'] as num).toDouble(),
+      longitude: (doc['longitude'] as num).toDouble(),
+      altitude: (doc['altitude'] as num).toDouble(),
+      speed: (doc['speed'] as num).toDouble(),
+      accuracy: (doc['accuracy'] as num).toDouble(),
+      timestamp: DateTime.parse(doc['timestamp'] as String),
     );
   }
 
-  void close() => _db.close();
+  Map<String, dynamic> _pointToDoc(LocationPoint point) {
+    return {
+      'latitude': point.latitude,
+      'longitude': point.longitude,
+      'altitude': point.altitude,
+      'speed': point.speed,
+      'accuracy': point.accuracy,
+      'timestamp': point.timestamp.toIso8601String(),
+    };
+  }
 }

@@ -22,8 +22,8 @@ class SessionsApi {
     return router;
   }
 
-  Response _listSessions(Request request) {
-    final sessionsWithCounts = db.getAllSessions();
+  Future<Response> _listSessions(Request request) async {
+    final sessionsWithCounts = await db.getAllSessions();
     final json = sessionsWithCounts.map((record) {
       final (session, pointCount) = record;
       final summary = session.toJsonSummary();
@@ -36,8 +36,8 @@ class SessionsApi {
     );
   }
 
-  Response _getSession(Request request, String id) {
-    final session = db.getSession(id);
+  Future<Response> _getSession(Request request, String id) async {
+    final session = await db.getSession(id);
     if (session == null) {
       return Response.notFound(jsonEncode({'error': 'Session not found'}));
     }
@@ -51,7 +51,7 @@ class SessionsApi {
     final body = await request.readAsString();
     final json = jsonDecode(body) as Map<String, dynamic>;
     final session = TrackingSession.fromJson(json);
-    db.createSession(session);
+    await db.createSession(session);
     return Response.ok(
       jsonEncode(session.toJson()),
       headers: {'Content-Type': 'application/json'},
@@ -59,34 +59,34 @@ class SessionsApi {
   }
 
   Future<Response> _updateSession(Request request, String id) async {
-    final existing = db.getSession(id);
+    final existing = await db.getSession(id);
     if (existing == null) {
       return Response.notFound(jsonEncode({'error': 'Session not found'}));
     }
     final body = await request.readAsString();
     final updates = jsonDecode(body) as Map<String, dynamic>;
-    db.updateSession(id, updates);
-    final updated = db.getSession(id);
+    await db.updateSession(id, updates);
+    final updated = await db.getSession(id);
     return Response.ok(
       jsonEncode(updated!.toJson()),
       headers: {'Content-Type': 'application/json'},
     );
   }
 
-  Response _deleteSession(Request request, String id) {
-    db.deleteSession(id);
+  Future<Response> _deleteSession(Request request, String id) async {
+    await db.deleteSession(id);
     return Response(204);
   }
 
   Future<Response> _addPoint(Request request, String id) async {
-    final existing = db.getSession(id);
+    final existing = await db.getSession(id);
     if (existing == null) {
       return Response.notFound(jsonEncode({'error': 'Session not found'}));
     }
     final body = await request.readAsString();
     final json = jsonDecode(body) as Map<String, dynamic>;
     final point = LocationPoint.fromJson(json);
-    db.addPoint(id, point);
+    await db.addPoint(id, point);
     return Response.ok(
       jsonEncode(point.toJson()),
       headers: {'Content-Type': 'application/json'},
