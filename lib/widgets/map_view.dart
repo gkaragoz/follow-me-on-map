@@ -87,10 +87,22 @@ class _MapViewState extends State<MapView> {
       _lastViewedSessionId = null;
     }
 
+    // Auto-center on current playback point during playback
+    if (viewingSession != null && sessionsProvider.isPlaying) {
+      final playbackPoint = sessionsProvider.currentPlaybackPoint;
+      if (playbackPoint != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _centerOnLocation(playbackPoint);
+        });
+      }
+    }
+
     // Determine which points to show on the map
     final List<LatLng> polylinePoints;
     if (viewingSession != null) {
+      final playbackIndex = sessionsProvider.playbackIndex;
       polylinePoints = viewingSession.points
+          .take(playbackIndex + 1)
           .map((p) => LatLng(p.latitude, p.longitude))
           .toList();
     } else {
@@ -165,10 +177,11 @@ class _MapViewState extends State<MapView> {
               ),
             ],
           ),
-        // Start/end markers for viewed session
+        // Markers for viewed session (start flag, end flag, playback position)
         if (viewingSession != null && viewingSession.points.isNotEmpty) ...[
           MarkerLayer(
             markers: [
+              // Start flag
               Marker(
                 point: LatLng(
                   viewingSession.points.first.latitude,
@@ -178,6 +191,7 @@ class _MapViewState extends State<MapView> {
                 height: 30,
                 child: const Icon(Icons.flag, color: Colors.green, size: 30),
               ),
+              // End flag (dimmed)
               if (viewingSession.points.length > 1)
                 Marker(
                   point: LatLng(
@@ -186,7 +200,32 @@ class _MapViewState extends State<MapView> {
                   ),
                   width: 30,
                   height: 30,
-                  child: const Icon(Icons.flag, color: Colors.red, size: 30),
+                  child: Icon(Icons.flag,
+                      color: Colors.red.withValues(alpha: 0.4), size: 30),
+                ),
+              // Current playback position
+              if (sessionsProvider.currentPlaybackPoint != null)
+                Marker(
+                  point: LatLng(
+                    sessionsProvider.currentPlaybackPoint!.latitude,
+                    sessionsProvider.currentPlaybackPoint!.longitude,
+                  ),
+                  width: 24,
+                  height: 24,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.blue.withValues(alpha: 0.4),
+                          blurRadius: 8,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
             ],
           ),

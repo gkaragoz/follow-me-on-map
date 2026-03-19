@@ -6,6 +6,7 @@ import '../utils/map_tile_providers.dart';
 import '../widgets/map_view.dart';
 import '../widgets/map_layer_switcher.dart';
 import '../widgets/tracking_controls.dart';
+import '../widgets/playback_controls.dart';
 import 'sessions_screen.dart';
 
 class MapScreen extends StatefulWidget {
@@ -132,13 +133,20 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
-          // Tracking controls (bottom)
+          // Tracking controls or playback controls (bottom)
           if (viewingSession == null)
             const Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               child: TrackingControls(),
+            )
+          else
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: PlaybackControls(),
             ),
         ],
       ),
