@@ -18,6 +18,7 @@ class MapView extends StatefulWidget {
 
 class _MapViewState extends State<MapView> {
   final MapController _mapController = MapController();
+  String? _lastViewedSessionId;
 
   @override
   void didUpdateWidget(MapView oldWidget) {
@@ -35,6 +36,19 @@ class _MapViewState extends State<MapView> {
         _mapController.camera.zoom,
       );
     }
+  }
+
+  void _fitSessionBounds(List<LocationPoint> points) {
+    if (points.isEmpty) return;
+    final bounds = LatLngBounds.fromPoints(
+      points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+    );
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: const EdgeInsets.all(50),
+      ),
+    );
   }
 
   List<TileLayer> _buildTileLayers() {
@@ -59,6 +73,18 @@ class _MapViewState extends State<MapView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _centerOnLocation(tracking.currentLocation);
       });
+    }
+
+    // Fit map to session bounds when a new session is selected
+    if (viewingSession != null &&
+        viewingSession.id != _lastViewedSessionId &&
+        viewingSession.points.isNotEmpty) {
+      _lastViewedSessionId = viewingSession.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fitSessionBounds(viewingSession.points);
+      });
+    } else if (viewingSession == null) {
+      _lastViewedSessionId = null;
     }
 
     // Determine which points to show on the map
