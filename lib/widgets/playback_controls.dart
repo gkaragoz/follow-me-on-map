@@ -72,7 +72,7 @@ class PlaybackControls extends StatelessWidget {
                         Icon(Icons.speed, size: 14, color: Colors.grey[600]),
                         const SizedBox(width: 4),
                         Text(
-                          '${currentPoint.speed.toStringAsFixed(1)} m/s',
+                          '${(currentPoint.speed * 3.6).toStringAsFixed(1)} km/h (${currentPoint.speed.toStringAsFixed(1)} m/s)',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(width: 16),
