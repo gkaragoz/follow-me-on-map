@@ -47,13 +47,16 @@ class _MapScreenState extends State<MapScreen> {
               child: Card(
                 color: Colors.blue.shade50,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+                  padding: const EdgeInsets.only(
+                    left: 12,
+                    top: 4,
+                    bottom: 4,
+                    right: 4,
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.visibility, size: 20),
+                      const Icon(Icons.visibility, size: 20,
+                          color: Colors.blue),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -61,11 +64,15 @@ class _MapScreenState extends State<MapScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      TextButton(
+                      IconButton(
                         onPressed: () {
                           sessionsProvider.viewSession(null);
                         },
-                        child: const Text('Close'),
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Close session preview',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.blue.shade100,
+                        ),
                       ),
                     ],
                   ),
@@ -73,10 +80,10 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
 
-          // Layer switcher (top-right)
+          // Layer switcher (bottom-right)
           Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
             right: 12,
+            bottom: 220,
             child: MapLayerSwitcher(
               currentLayer: _currentLayer,
               onLayerChanged: (layer) {
@@ -88,7 +95,7 @@ class _MapScreenState extends State<MapScreen> {
           // Center on location button
           Positioned(
             right: 12,
-            bottom: 220,
+            bottom: 280,
             child: FloatingActionButton.small(
               heroTag: 'center',
               onPressed: () {
